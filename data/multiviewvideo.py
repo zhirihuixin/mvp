@@ -4,6 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 """Dataset class for multiview video datasets"""
+import cv2
 import itertools
 import multiprocessing
 import os
@@ -16,8 +17,8 @@ from scipy.ndimage.morphology import binary_dilation
 from PIL import Image
 
 import torch.utils.data
+import torchaudio
 
-import cv2
 cv2.setNumThreads(0)
 
 from utils import utils
@@ -74,7 +75,11 @@ class Dataset(torch.utils.data.Dataset):
             downsample : float=1.,
             blacklevel : list=[0., 0., 0.],
             maskbright : bool=False,
-            maskbrightbg : bool=False
+            maskbrightbg : bool=False,
+            # bacon
+            wavpath : Optional[str]=None,
+            wavefps : Optional[int]=None,
+            my : bool=False,
             ):
         """
         Dataset class for loading synchronized multi-view video (optionally
@@ -179,33 +184,56 @@ class Dataset(torch.utils.data.Dataset):
         self.maskbrightbg = maskbrightbg
 
         # compute camera/frame list
-        krt = utils.load_krt(krtpath)
+        krt = utils.load_krt(krtpath, my)
+        # bacon
+        self.krt = krt
 
         self.allcameras = sorted(list(krt.keys()))
         self.cameras = list(filter(camerafilter, self.allcameras))
 
         # compute camera positions
         self.campos, self.camrot, self.focal, self.princpt, self.size = {}, {}, {}, {}, {}
+        # camp = []
         for cam in self.allcameras:
-            self.campos[cam] = (-np.dot(krt[cam]['extrin'][:3, :3].T, krt[cam]['extrin'][:3, 3])).astype(np.float32)
-            self.camrot[cam] = (krt[cam]['extrin'][:3, :3]).astype(np.float32)
-            self.focal[cam] = (np.diag(krt[cam]['intrin'][:2, :2]) / downsample).astype(np.float32)
+            # bacon
+            if int(cam) < 43:
+                self.campos[cam] = (-np.dot(krt[cam]['extrin'][:3, :3].T, krt[cam]['extrin'][:3, 3])).astype(np.float32)
+                # camp.append(self.campos[cam])
+                self.camrot[cam] = (krt[cam]['extrin'][:3, :3]).astype(np.float32)
+                self.focal[cam] = (np.diag(krt[cam]['intrin'][:2, :2]) / downsample).astype(np.float32)
+            else:
+                self.campos[cam] = self.krt[cam]['intrin'][-1].T.reshape((3)).astype(np.float32)
+                self.camrot[cam] = self.krt[cam]['extrin'][:,:-1].astype(np.float32)
+                self.focal[cam] = np.array([1500, 1500], np.float32)
+                # print(self.campos[cam])
+                # print(self.camrot[cam])
+                # print(cam)
+                # exit()
+
             self.princpt[cam] = (krt[cam]['intrin'][:2, 2] / downsample).astype(np.float32)
             self.size[cam] = np.floor(krt[cam]['size'].astype(np.float32) / downsample).astype(np.int32)
 
         # set up paths
         self.imagepath = imagepath
         if geomdir is not None:
-            self.vertpath = os.path.join(geomdir, "tracked_mesh", "{seg}", "{frame:06d}.bin")
+            # bacon
+            if my:
+                self.vertpath = os.path.join(geomdir, "tracked_mesh", "{seg}", "{frame:01d}.bin")
+            else:
+                self.vertpath = os.path.join(geomdir, "tracked_mesh", "{seg}", "{frame:06d}.bin")
             self.transfpath = os.path.join(geomdir, "tracked_mesh", "{seg}", "{frame:06d}_transform.txt")
             self.texpath = os.path.join(geomdir, "unwrapped_uv_1024", "{seg}", "{cam}", "{frame:06d}.png")
         else:
             self.transfpath = None
+        # bacon
+        self.wavpath = wavpath
+        self.wavefps = wavefps
 
         # build list of frames
         if framelist is None:
-            framelist = np.genfromtxt(os.path.join(geomdir, "frame_list.txt"), dtype=np.str)
-            self.framelist = [tuple(sf) for sf in framelist if segmentfilter(sf[0]) and sf[1] not in frameexclude]
+            framelist = np.genfromtxt(os.path.join(geomdir, "frame_list.txt"), dtype=np.str_)
+            # self.framelist = [tuple(sf) for sf in framelist if segmentfilter(sf[0]) and sf[1] not in frameexclude]
+            self.framelist = [tuple(sf) for sf in framelist if sf[1] not in frameexclude]
         else:
             self.framelist = framelist
 
@@ -304,14 +332,16 @@ class Dataset(torch.utils.data.Dataset):
         # image from one or more cameras (those cameras are fixed over the dataset)
         if "fixedcamimage" in self.keyfilter:
             ninput = len(self.fixedcameras)
-
+            
             fixedcamimage = []
             for i in range(ninput):
                 imagepath = self.imagepath.format(seg=seg, cam=self.fixedcameras[i], frame=int(frame))
                 image = utils.downsample(
                         np.asarray(Image.open(imagepath), dtype=np.uint8), self.fixedcamdownsample).transpose((2, 0, 1)).astype(np.float32)
                 fixedcamimage.append(image)
-            fixedcamimage = np.concatenate(fixedcamimage, axis=1)
+
+            # fixedcamimage = np.concatenate(fixedcamimage, axis=1)
+            fixedcamimage = np.concatenate(fixedcamimage, axis=0)
             fixedcamimage[:] -= self.fixedcammean
             fixedcamimage[:] /= self.fixedcamstd
             result["fixedcamimage"] = fixedcamimage
@@ -343,6 +373,23 @@ class Dataset(torch.utils.data.Dataset):
                     verts -= self.vertmean.ravel()
                     verts /= self.vertstd
                 result[k] = verts.reshape((-1, 3))
+        
+        # bacon
+        # wav
+        if "wav" in self.keyfilter:
+            # wavpath = self.wavpath.format(seg=seg, cam=cam, frame=int(frame))
+            wavpath = self.wavpath
+            sample_rate = torchaudio.backend.sox_io_backend.info(wavpath).sample_rate
+            start_frame = int(int(frame) / self.wavefps * sample_rate)
+            num_frames = int(sample_rate / self.wavefps)
+
+            waveform, _ = torchaudio.backend.sox_io_backend.load(
+                filepath=wavpath,
+                num_frames=num_frames,
+                frame_offset=start_frame) # torch.Size([2, 9379188])
+            waveform = waveform * (1 << 15)
+            result["waveform"] = waveform # torch.Size([2, 882])
+            result["wav_sample_rate"] = sample_rate
 
         # texture averaged over all cameras for a single frame
         for k in ["avgtex", "avgtex_next"]:
@@ -371,7 +418,6 @@ class Dataset(torch.utils.data.Dataset):
         if "modelmatrix" in self.keyfilter or "modelmatrixinv" in self.keyfilter or "camera" in self.keyfilter:
             def to4x4(m):
                 return np.r_[m, np.array([[0., 0., 0., 1.]], dtype=np.float32)]
-
             # per-frame rigid transformation of scene/object
             for k in ["modelmatrix", "modelmatrix_next"]:
                 if k in self.keyfilter:
@@ -408,9 +454,17 @@ class Dataset(torch.utils.data.Dataset):
         if cam is not None:
             # camera pose
             if "camera" in self.keyfilter:
-                result["campos"] = np.dot(self.basetransf[:3, :3].T, self.campos[cam] - self.basetransf[:3, 3])
-                result["camrot"] = np.dot(self.basetransf[:3, :3].T, self.camrot[cam].T).T
-                result["focal"] = self.focal[cam]
+                # bacon
+                if int(cam) < 43:
+                    result["campos"] = np.dot(self.basetransf[:3, :3].T, self.campos[cam] - self.basetransf[:3, 3]).astype(np.float32)
+                    result["camrot"] = np.dot(self.basetransf[:3, :3].T, self.camrot[cam].T).T.astype(np.float32)
+
+                    result["focal"] = self.focal[cam]
+                else:
+                    result["campos"] = self.krt[cam]['intrin'][-1].T.reshape((3)).astype(np.float32)
+                    result["camrot"] = self.krt[cam]['extrin'][:,:-1].astype(np.float32)
+                    result["focal"] = np.array([1500, 1500], np.float32)
+
                 result["princpt"] = self.princpt[cam]
                 result["camindex"] = self.allcameras.index(cam)
 

@@ -12,4 +12,7 @@ build/
 
 *.jpg
 *.png
+*.txt
+*.pt
 experiments/human1/data
+experiments/topology.obj

@@ -4,6 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 """Write images to a tmp folder and then use ffmpeg to create a video"""
+import cv2
 import os
 import shutil
 import subprocess
@@ -18,7 +19,6 @@ import matplotlib.cm as cm
 
 from PIL import Image
 
-import cv2
 cv2.setNumThreads(0)
 
 import torch
@@ -176,7 +176,8 @@ def writeimage(randid, itemnum, outputs, **kwargs):
         imgout = imgout[:, :-1, :]
 
     # apply gamma
-    imgout = ((imgout / 255.) ** (1. / 1.8) * 255.).clamp(min=0., max=255.).byte()
+    # imgout = ((imgout / 255.) ** (1. / 1.8) * 255.).clamp(min=0., max=255.).byte()
+    imgout = imgout.byte()
 
     # CHW -> HWC
     imgout = imgout.permute(1, 2, 0)
@@ -184,16 +185,18 @@ def writeimage(randid, itemnum, outputs, **kwargs):
     imgout = imgout.data.to("cpu").numpy()
 
     Image.fromarray(imgout).save("{}/{:06}.png".format(randid, itemnum))
+    Image.fromarray(imgout).save("/data/dingpeigeng/project/mvp/newcam/{}.png".format(itemnum))
 
 class Writer():
     def __init__(self, outpath, keyfilter,
             bgcolor=[0., 0., 0.],
-            #colcorrect=[1.35, 1.16, 1.5],
+            # colcorrect=[1.35, 1.16, 1.5],
             colcorrect=[1., 1., 1.],
             cmap=None,
             cmapscale=255.,
             colorbar=False,
-            nthreads=16):
+            nthreads=16,
+            fps=30):
         self.outpath = outpath
         self.keyfilter = keyfilter
         self.bgcolor = np.array(bgcolor, dtype=np.float32)
@@ -201,6 +204,7 @@ class Writer():
         self.cmap = cmap
         self.cmapscale = cmapscale
         self.colorbar = colorbar
+        self.fps = fps
 
         if cmap is not None and colorbar:
             plt.style.use('dark_background')
@@ -210,8 +214,8 @@ class Writer():
             plt.gca().set_visible(False)
             cax = plt.axes([0.1, 0.2, 0.2, 0.8])
             plt.colorbar(orientation="vertical", cax=cax)
-            plt.savefig("/tmp/colorbar.png", bbox_inches='tight')
-            self.colorbarimg = np.asarray(Image.open("/tmp/colorbar.png"), dtype=np.float32)
+            plt.savefig("/home/wangzhihui/workspace/mvp/tmp/colorbar.png", bbox_inches='tight')
+            self.colorbarimg = np.asarray(Image.open("/home/wangzhihui/workspace/mvp/tmp/colorbar.png"), dtype=np.float32)
             self.colorbarimg = torch.from_numpy(self.colorbarimg).permute(2, 0, 1)
         else:
             self.colorbarimg = None
@@ -219,7 +223,7 @@ class Writer():
         # set up temporary output
         self.randid = ''.join([str(x) for x in np.random.randint(0, 9, size=10)])
         try:
-            os.makedirs("/tmp/{}".format(self.randid))
+            os.makedirs("/home/wangzhihui/workspace/mvp/tmp/{}".format(self.randid))
         except OSError:
             pass
 
@@ -246,9 +250,10 @@ class Writer():
             self.lightpow.extend(kwargs["lightpow"].data.to("cpu").numpy().tolist())
 
         for i in range(b):
+
             self.asyncresults.append(
                 self.writepool.apply_async(writeimage,
-                    ("/tmp/{}".format(self.randid), itemnum[i], {k:
+                    ("/home/wangzhihui/workspace/mvp/tmp/{}".format(self.randid), itemnum[i], {k:
                         kwargs[k][i].data.to("cpu") if isinstance(kwargs[k][i], torch.Tensor) else kwargs[k][i]
                         for k in self.keyfilter}),
                     {"cmap": self.cmap, "cmapscale": self.cmapscale,
@@ -267,18 +272,19 @@ class Writer():
         for r in self.asyncresults:
             if r is not None:
                 r.wait()
-
+        
         if self.nitems == 1:
-            os.system("cp /tmp/{}/{:06}.png {}.png".format(self.randid, 0, self.outpath[:-4]))
+            os.system("cp /home/wangzhihui/workspace/mvp/tmp/{}/{:06}.png {}.png".format(self.randid, 0, self.outpath[:-4]))
         elif self.nitems > 0:
             # make video file
             command = (
-                    "ffmpeg -y -r 30 -i /tmp/{}/%06d.png "
+                    "ffmpeg -y -r {} -i /home/wangzhihui/workspace/mvp/tmp/{}/%06d.png "
                     "-vframes {} "
                     "-vcodec libx264 -crf 18 "
                     "-pix_fmt yuv420p "
-                    "{}".format(self.randid, self.nitems, self.outpath)
+                    "{}".format(self.fps, self.randid, self.nitems, self.outpath)
                     ).split()
+            print(command)
             subprocess.call(command)
 
-            shutil.rmtree("/tmp/{}".format(self.randid))
+            shutil.rmtree("/home/wangzhihui/workspace/mvp/tmp/{}".format(self.randid))

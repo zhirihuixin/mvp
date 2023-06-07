@@ -95,7 +95,7 @@ def load_obj(path):
 
     return v, vt, vindices, vtindices
 
-def load_krt(path):
+def load_krt(path, my=False):
     """Load KRT file containing intrinsic and extrinsic parameters for cameras.
     
     KRT file is a text file with 1 or more entries like:
@@ -133,6 +133,13 @@ def load_krt(path):
             intrin = [[float(x) for x in f.readline().split()] for i in range(3)]
             dist = [float(x) for x in f.readline().split()]
             extrin = [[float(x) for x in f.readline().split()] for i in range(3)]
+
+            # bacon
+            if my and int(name)<43:
+                extrin = np.array(extrin)
+                extrin = np.concatenate([extrin[2:3, :], -extrin[0:1, :], extrin[1:2, :]]) # for my dataset
+                extrin = np.linalg.inv(np.concatenate([extrin, np.array([[0,0,0,1]])], axis=0))[:-1]
+            
             f.readline()
 
             cameras[name] = {
