@@ -9,3 +9,9 @@ __pycache__/
 .nfs*
 
 build/
+
+*.jpg
+*.png
+*.txt
+*.pt
+experiments/
