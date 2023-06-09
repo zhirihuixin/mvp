@@ -204,7 +204,7 @@ class Dataset(torch.utils.data.Dataset):
 
         # build list of frames
         if framelist is None:
-            framelist = np.genfromtxt(os.path.join(geomdir, "frame_list.txt"), dtype=np.str)
+            framelist = np.genfromtxt(os.path.join(geomdir, "frame_list.txt"), dtype=np.str_)
             self.framelist = [tuple(sf) for sf in framelist if segmentfilter(sf[0]) and sf[1] not in frameexclude]
         else:
             self.framelist = framelist

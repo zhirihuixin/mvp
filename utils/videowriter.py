@@ -210,8 +210,8 @@ class Writer():
             plt.gca().set_visible(False)
             cax = plt.axes([0.1, 0.2, 0.2, 0.8])
             plt.colorbar(orientation="vertical", cax=cax)
-            plt.savefig("/tmp/colorbar.png", bbox_inches='tight')
-            self.colorbarimg = np.asarray(Image.open("/tmp/colorbar.png"), dtype=np.float32)
+            plt.savefig("./tmp/colorbar.png", bbox_inches='tight')
+            self.colorbarimg = np.asarray(Image.open("./tmp/colorbar.png"), dtype=np.float32)
             self.colorbarimg = torch.from_numpy(self.colorbarimg).permute(2, 0, 1)
         else:
             self.colorbarimg = None
@@ -219,7 +219,7 @@ class Writer():
         # set up temporary output
         self.randid = ''.join([str(x) for x in np.random.randint(0, 9, size=10)])
         try:
-            os.makedirs("/tmp/{}".format(self.randid))
+            os.makedirs("./tmp/{}".format(self.randid))
         except OSError:
             pass
 
@@ -248,7 +248,7 @@ class Writer():
         for i in range(b):
             self.asyncresults.append(
                 self.writepool.apply_async(writeimage,
-                    ("/tmp/{}".format(self.randid), itemnum[i], {k:
+                    ("./tmp/{}".format(self.randid), itemnum[i], {k:
                         kwargs[k][i].data.to("cpu") if isinstance(kwargs[k][i], torch.Tensor) else kwargs[k][i]
                         for k in self.keyfilter}),
                     {"cmap": self.cmap, "cmapscale": self.cmapscale,
@@ -269,11 +269,11 @@ class Writer():
                 r.wait()
 
         if self.nitems == 1:
-            os.system("cp /tmp/{}/{:06}.png {}.png".format(self.randid, 0, self.outpath[:-4]))
+            os.system("cp ./tmp/{}/{:06}.png {}.png".format(self.randid, 0, self.outpath[:-4]))
         elif self.nitems > 0:
             # make video file
             command = (
-                    "ffmpeg -y -r 30 -i /tmp/{}/%06d.png "
+                    "ffmpeg -y -r 30 -i ./tmp/{}/%06d.png "
                     "-vframes {} "
                     "-vcodec libx264 -crf 18 "
                     "-pix_fmt yuv420p "
@@ -281,4 +281,4 @@ class Writer():
                     ).split()
             subprocess.call(command)
 
-            shutil.rmtree("/tmp/{}".format(self.randid))
+            shutil.rmtree("./tmp/{}".format(self.randid))
