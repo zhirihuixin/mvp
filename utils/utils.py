@@ -133,6 +133,11 @@ def load_krt(path):
             intrin = [[float(x) for x in f.readline().split()] for i in range(3)]
             dist = [float(x) for x in f.readline().split()]
             extrin = [[float(x) for x in f.readline().split()] for i in range(3)]
+
+            extrin = np.array(extrin)
+            extrin = np.concatenate([extrin[2:3, :], -extrin[0:1, :], extrin[1:2, :]]) # for my dataset
+            extrin = np.linalg.inv(np.concatenate([extrin, np.array([[0,0,0,1]])], axis=0))[:-1]
+            
             f.readline()
 
             cameras[name] = {

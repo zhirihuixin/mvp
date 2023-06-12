@@ -196,9 +196,12 @@ class Dataset(torch.utils.data.Dataset):
         # set up paths
         self.imagepath = imagepath
         if geomdir is not None:
-            self.vertpath = os.path.join(geomdir, "tracked_mesh", "{seg}", "{frame:06d}.bin")
-            self.transfpath = os.path.join(geomdir, "tracked_mesh", "{seg}", "{frame:06d}_transform.txt")
-            self.texpath = os.path.join(geomdir, "unwrapped_uv_1024", "{seg}", "{cam}", "{frame:06d}.png")
+            # self.vertpath = os.path.join(geomdir, "tracked_mesh", "{seg}", "{frame:06d}.bin")
+            # self.transfpath = os.path.join(geomdir, "tracked_mesh", "{seg}", "{frame:06d}_transform.txt")
+            # self.texpath = os.path.join(geomdir, "unwrapped_uv_1024", "{seg}", "{cam}", "{frame:06d}.png")
+            self.vertpath = os.path.join(geomdir, "tracked_mesh", "{seg}", "{frame:05d}.bin")
+            self.transfpath = os.path.join(geomdir, "tracked_mesh", "{seg}", "{frame:05d}_transform.txt")
+            self.texpath = os.path.join(geomdir, "unwrapped_uv_1024", "{seg}", "{cam}", "{frame:05d}.png")
         else:
             self.transfpath = None
 
