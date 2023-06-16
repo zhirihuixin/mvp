@@ -17,7 +17,7 @@ class Dataset(torch.utils.data.Dataset):
         self.focalmult = focalmult
         self.camy = camy
         self.revs = revs
-        self.width, self.height = 960, 1280
+        self.width, self.height = 1080, 1920
 
         self.focal = np.array([
             1000. * (self.height / 640.),
